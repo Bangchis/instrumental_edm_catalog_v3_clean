@@ -25,6 +25,6 @@ CUDA_VISIBLE_DEVICES=0,1 python -m acestep.training_v2.cli.train_fixed \
   --gradient-checkpointing \
   --num-devices 2 \
   --strategy ddp \
-  --save-every 10 \
+  --save-every 25 \
   --log-every 10 \
   --yes

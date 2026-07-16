@@ -42,7 +42,12 @@ pid1=$!
 
 wait "$pid0"
 wait "$pid1"
-find "$TENSORS/part0" "$TENSORS/part1" -maxdepth 1 -name '*.pt' -exec cp -n {} "$TENSORS/all/" \;
+while IFS= read -r -d '' tensor; do
+  target="$TENSORS/all/$(basename "$tensor")"
+  if [[ ! -e "$target" ]] || [[ ! "$tensor" -ef "$target" ]]; then
+    ln -f "$tensor" "$target"
+  fi
+done < <(find "$TENSORS/part0" "$TENSORS/part1" -maxdepth 1 -name '*.pt' -print0)
 
 audio_count=$(find "$DATASET" -maxdepth 1 -name '*.flac' | wc -l | tr -d ' ')
 tensor_count=$(find "$TENSORS/all" -maxdepth 1 -name '*.pt' | wc -l | tr -d ' ')
