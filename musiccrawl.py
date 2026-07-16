@@ -90,11 +90,28 @@ def hydration_score(seed: dict[str, Any], candidate: dict[str, Any]) -> float:
     wanted_title = normalized_words(seed.get("title_raw"))
     got_title = normalized_words(candidate.get("title") or candidate.get("title_raw"))
     title_score = difflib.SequenceMatcher(None, wanted_title, got_title).ratio()
+    wanted_title_words = set(wanted_title.split())
+    got_title_words = set(got_title.split())
+    if wanted_title_words and wanted_title_words <= got_title_words:
+        title_score = max(title_score, 0.92)
+
     wanted_channel = normalized_words(seed.get("channel_name") or seed.get("source_id"))
     got_channel = normalized_words(candidate.get("channel") or candidate.get("uploader") or candidate.get("channel_name"))
-    channel_score = difflib.SequenceMatcher(None, wanted_channel, got_channel).ratio() if wanted_channel else 0.5
+    wanted_artist_words = set(wanted_channel.split())
+    # Correct reposts often carry the artist in the title while the uploader
+    # channel is unrelated (for example "Xomu - Tera" on Wave Nation).
+    artist_haystack = set(f"{got_channel} {got_title}".split())
+    artist_score = (
+        len(wanted_artist_words & artist_haystack) / len(wanted_artist_words)
+        if wanted_artist_words else 0.5
+    )
+    channel_similarity = difflib.SequenceMatcher(None, wanted_channel, got_channel).ratio() if wanted_channel else 0.5
+    artist_score = max(artist_score, channel_similarity)
     exact_bonus = 0.12 if wanted_title and wanted_title == got_title else 0.0
-    return min(1.0, 0.82 * title_score + 0.18 * channel_score + exact_bonus)
+    score = 0.78 * title_score + 0.22 * artist_score + exact_bonus
+    if wanted_artist_words and not (wanted_artist_words & artist_haystack):
+        score -= 0.20
+    return max(0.0, min(1.0, score))
 
 
 def hydrate_selection_row(row: dict[str, str], max_results: int, min_score: float) -> tuple[dict[str, Any], str]:

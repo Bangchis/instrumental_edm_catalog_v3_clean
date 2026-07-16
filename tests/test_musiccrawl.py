@@ -17,6 +17,13 @@ class MusiccrawlTests(unittest.TestCase):
         self.assertGreater(musiccrawl.hydration_score(seed, exact), musiccrawl.hydration_score(seed, wrong))
         self.assertGreaterEqual(musiccrawl.hydration_score(seed, exact), 0.95)
 
+    def test_hydration_score_accepts_artist_in_repost_title(self) -> None:
+        seed = {"title_raw": "Tera", "channel_name": "Xomu"}
+        repost = {"title": "Xomu - Tera [Copyright Free Music]", "channel": "Wave Nation"}
+        wrong_artist = {"title": "Tera (Official Audio)", "channel": "Someone Else"}
+        self.assertGreaterEqual(musiccrawl.hydration_score(seed, repost), 0.58)
+        self.assertLess(musiccrawl.hydration_score(seed, wrong_artist), 0.58)
+
     def test_export_all_ignores_liked_and_deduplicates_video_ids(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
