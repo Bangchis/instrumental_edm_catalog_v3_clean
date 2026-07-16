@@ -30,6 +30,7 @@ REQUIRED_CATALOG_FIELDS = (
     "video_id", "webpage_url", "channel_id", "channel_name", "title_raw",
     "duration_seconds", "upload_date", "crawl_timestamp",
 )
+AUDIO_SUFFIXES = {".aac", ".flac", ".m4a", ".mp3", ".ogg", ".opus", ".wav", ".webm"}
 
 
 def now_iso() -> str:
@@ -632,8 +633,7 @@ def cmd_download(a:argparse.Namespace)->None:
             continue
         audio_files = sorted(
             p for p in info_path.parent.glob("audio.*")
-            if p.name not in {"audio.info.json", "audio.description"}
-            and not p.name.endswith((".webp", ".jpg", ".png", ".part", ".ytdl"))
+            if p.suffix.casefold() in AUDIO_SUFFIXES
         )
         manifest.append({
             "video_id": info.get("id"),
