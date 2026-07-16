@@ -1,0 +1,40 @@
+{
+  "total_rows": 240,
+  "per_source": {
+    "xomu": 40,
+    "thefatrat": 40,
+    "diversity": 40,
+    "starling_edm": 40,
+    "xu_mengyuan": 40,
+    "myomouse": 40
+  },
+  "rank_ranges": {
+    "xomu": [
+      1,
+      40
+    ],
+    "thefatrat": [
+      1,
+      40
+    ],
+    "diversity": [
+      1,
+      40
+    ],
+    "starling_edm": [
+      1,
+      40
+    ],
+    "xu_mengyuan": [
+      1,
+      40
+    ],
+    "myomouse": [
+      1,
+      40
+    ]
+  },
+  "liked_nonblank": 0,
+  "last_dance_iely_present": true,
+  "playlist_status": "pending_live_enumeration"
+}

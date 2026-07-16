@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "musiccrawl"
+version = "0.3.0"
+description = "Metadata-first YouTube music catalog and binary taste-selection CLI"
+requires-python = ">=3.10"
+dependencies = ["yt-dlp>=2025.1.0"]
+
+[project.scripts]
+musiccrawl = "musiccrawl:main"
+
+[tool.setuptools]
+py-modules = ["musiccrawl"]

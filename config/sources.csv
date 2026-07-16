@@ -1,0 +1,8 @@
+﻿source_id,source_type,url,style_hint,enabled,ranking_mode,target_count,candidate_pool,merge_policy,selection_status,notes
+xomu,channel,https://www.youtube.com/@Xomu,east_asian_edm,1,popular,40,200,same video_id only,seed_has_40_candidates,Hydrate live counters before asserting exact current popularity order.
+thefatrat,channel,https://www.youtube.com/channel/UCa_UMppcMsHIzb5LDx1u9zQ,gaming_edm,1,popular,40,200,same video_id only,seed_has_40_candidates,Instrumental enforcement occurs after liked selection.
+diversity,channel,https://www.youtube.com/channel/UC7tD6Ifrwbiy-BoaAHEinmQ,mixed_edm,1,popular,40,300,same video_id only,seed_has_40_candidates,"Contains Xomu - Last Dance (IELY Remix), video YOcwtc9Jpls."
+starling_edm,channel,https://www.youtube.com/@StarlingEDMx,china_edm,1,popular,40,300,same video_id only,seed_has_40_candidates,Promotion-channel uploads remain distinct by video ID.
+xu_mengyuan,channel,https://www.youtube.com/@yuanmengcn,china_melodic,1,popular,40,250,same video_id only,seed_has_40_candidates,Ranks 31-40 are the ten user-requested YUAN videos.
+myomouse,channel,https://www.youtube.com/channel/UCwVtvIJotUJSxT1gkn_wAgw,melodic_edm,1,popular,40,100,same video_id only,seed_has_40_candidates,"Alternate uploads/arrangements are retained, then fingerprint-reviewed after download."
+yuan_playlist_first37,playlist,https://www.youtube.com/playlist?list=PLdzH6pYmEFNNi6LB6EZF5Y07rXm3q7rjC,china_melodic,1,source_order,37,37,merge only identical video_id; otherwise append,pending_live_import,First 37 entries must be enumerated on a machine where YouTube permits playlist access.

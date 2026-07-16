@@ -1,0 +1,18 @@
+# Local environment and Python artifacts
+.env
+.env.*
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Editor and OS artifacts
+.DS_Store
+.vscode/
+
+# Microsoft Office temporary lock files
+~$*
+
+# Generated/downloaded working data
+raw/
+state/

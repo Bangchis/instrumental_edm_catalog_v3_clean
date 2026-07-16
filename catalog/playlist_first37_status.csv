@@ -1,0 +1,2 @@
+﻿source_id,playlist_url,requested_count,status,merge_policy,liked_default,notes
+yuan_playlist_first37,https://www.youtube.com/playlist?list=PLdzH6pYmEFNNi6LB6EZF5Y07rXm3q7rjC,37,PENDING_LIVE_ENUMERATION,same video_id => merge provenance; different video_id => keep separate,blank,Entries are not invented in this seed. Run inventory to materialize the first 37.
