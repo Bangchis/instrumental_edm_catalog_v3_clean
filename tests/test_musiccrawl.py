@@ -12,6 +12,14 @@ import musiccrawl
 
 
 class MusiccrawlTests(unittest.TestCase):
+    def test_resume_reuses_only_successfully_hydrated_rows(self) -> None:
+        base = {"video_id": "abc", "hydrated_at": "2026-07-17T00:00:00+00:00"}
+        self.assertTrue(musiccrawl.reusable_hydration({**base, "hydrate_status": "resolved"}))
+        self.assertTrue(musiccrawl.reusable_hydration({**base, "hydrate_status": "cached"}))
+        self.assertFalse(musiccrawl.reusable_hydration({**base, "hydrate_status": "low_score"}))
+        self.assertFalse(musiccrawl.reusable_hydration({**base, "hydrate_status": "errors"}))
+        self.assertFalse(musiccrawl.reusable_hydration({"video_id": "abc", "hydrate_status": "resolved"}))
+
     def test_youtube_video_id_supports_pipeline_url_forms(self) -> None:
         self.assertEqual(musiccrawl.youtube_video_id("https://www.youtube.com/watch?v=abc123&t=1"), "abc123")
         self.assertEqual(musiccrawl.youtube_video_id("https://youtu.be/def456"), "def456")

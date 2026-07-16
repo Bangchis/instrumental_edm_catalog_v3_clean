@@ -228,6 +228,17 @@ def hydrate_selection_row(row: dict[str, str], max_results: int, min_score: floa
     return out, "resolved"
 
 
+def reusable_hydration(row: dict[str, Any] | None) -> bool:
+    """Only successful hydration rows may be reused by --resume."""
+    if not row:
+        return False
+    return bool(
+        row.get("hydrated_at")
+        and row.get("video_id")
+        and row.get("hydrate_status") in {"resolved", "cached"}
+    )
+
+
 def popular_channel_url(url: str) -> str:
     # YouTube's popular sorting query. yt-dlp may internally resolve the tab.
     base=url.rstrip('/')
@@ -402,7 +413,7 @@ def cmd_hydrate_selection(a: argparse.Namespace) -> None:
 
     def hydrate_task(index: int, row: dict[str, str]) -> tuple[int, dict[str, Any], str]:
         cached = cached_by_key.get(row.get("record_key", ""))
-        if cached and cached.get("hydrated_at") and cached.get("video_id"):
+        if reusable_hydration(cached):
             hydrated = dict(cached)
             hydrated["hydrate_status"] = "resolved"
             return index, hydrated, "cached"
