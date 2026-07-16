@@ -412,7 +412,13 @@ def cmd_hydrate_selection(a: argparse.Namespace) -> None:
     cached_by_key: dict[str, dict[str, str]] = {}
     if a.resume and a.output.exists():
         cached_by_key = {row.get("record_key", ""): row for row in read_csv(a.output)}
-    output_rows: list[dict[str, Any] | None] = [None] * len(rows)
+    # Seed checkpoints with the previous output so an interruption while
+    # retrying a few rows never erases already-resolved metadata on disk.
+    output_rows: list[dict[str, Any] | None] = [
+        dict(cached_by_key[row.get("record_key", "")])
+        if row.get("record_key", "") in cached_by_key else None
+        for row in rows
+    ]
     statuses: list[str | None] = [None] * len(rows)
     stats = {"resolved": 0, "cached": 0, "no_candidates": 0, "low_score": 0, "candidate_missing_video_id": 0, "errors": 0}
     extra_fields = (
