@@ -10,6 +10,7 @@ export HTTP_PROXY="$ALL_PROXY"
 cd /workspace/instrumental_edm_catalog_v3_clean
 exec python -u musiccrawl.py hydrate-selection \
   --selection catalog/selection.csv \
+  --overrides catalog/hydration_overrides.csv \
   --output data/manifests/selection_hydrated.csv \
   --unresolved data/manifests/hydration_unresolved.csv \
   --max-results 5 \

@@ -369,6 +369,9 @@ def cmd_inventory(a:argparse.Namespace)->None:
 
 def cmd_hydrate_selection(a: argparse.Namespace) -> None:
     rows = read_csv(a.selection)
+    overrides: dict[str, dict[str, str]] = {}
+    if a.overrides and a.overrides.exists():
+        overrides = {row.get("record_key", ""): row for row in read_csv(a.overrides)}
     cached_by_key: dict[str, dict[str, str]] = {}
     if a.resume and a.output.exists():
         cached_by_key = {row.get("record_key", ""): row for row in read_csv(a.output)}
@@ -387,6 +390,12 @@ def cmd_hydrate_selection(a: argparse.Namespace) -> None:
             hydrated = dict(cached)
             hydrated["hydrate_status"] = "resolved"
             return index, hydrated, "cached"
+        row = dict(row)
+        override = overrides.get(row.get("record_key", ""))
+        if override and override.get("video_id"):
+            row["video_id"] = override["video_id"].strip()
+            row["webpage_url"] = (override.get("webpage_url") or YOUTUBE_WATCH.format(row["video_id"])).strip()
+            row["metadata_status"] = "manual video override; hydrate live metadata"
         try:
             hydrated, status = hydrate_selection_row(row, a.max_results, a.min_score)
         except Exception as exc:
@@ -756,7 +765,7 @@ def cmd_validate_selection(a: argparse.Namespace) -> None:
 def build_parser()->argparse.ArgumentParser:
     p=argparse.ArgumentParser(prog='musiccrawl'); sub=p.add_subparsers(dest='cmd',required=True)
     q=sub.add_parser('inventory'); q.add_argument('--sources',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--state',type=Path); q.add_argument('--min-duration',type=int,default=60); q.add_argument('--max-duration',type=int,default=600); q.set_defaults(fn=cmd_inventory)
-    q=sub.add_parser('hydrate-selection'); q.add_argument('--selection',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--unresolved',type=Path,required=True); q.add_argument('--max-results',type=int,default=5); q.add_argument('--min-score',type=float,default=0.58); q.add_argument('--checkpoint-every',type=int,default=10); q.add_argument('--sleep',type=float,default=0.25); q.add_argument('--workers',type=int,default=1); q.add_argument('--resume',action='store_true'); q.set_defaults(fn=cmd_hydrate_selection)
+    q=sub.add_parser('hydrate-selection'); q.add_argument('--selection',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--unresolved',type=Path,required=True); q.add_argument('--overrides',type=Path); q.add_argument('--max-results',type=int,default=5); q.add_argument('--min-score',type=float,default=0.58); q.add_argument('--checkpoint-every',type=int,default=10); q.add_argument('--sleep',type=float,default=0.25); q.add_argument('--workers',type=int,default=1); q.add_argument('--resume',action='store_true'); q.set_defaults(fn=cmd_hydrate_selection)
     q=sub.add_parser('export-selection'); q.add_argument('--catalog',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--reset-ratings',action='store_true'); q.set_defaults(fn=cmd_export_selection)
     q=sub.add_parser('select'); q.add_argument('--selection',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--unresolved-output',type=Path); q.set_defaults(fn=cmd_select)
     q=sub.add_parser('export-all'); q.add_argument('--selection',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--unresolved',type=Path,required=True); q.set_defaults(fn=cmd_export_all)
