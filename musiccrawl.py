@@ -98,7 +98,10 @@ def youtube_runtime_options() -> dict[str, Any]:
 def normalized_words(value: Any) -> str:
     text = unicodedata.normalize("NFKD", str(value or "")).casefold()
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
-    return " ".join(re.findall(r"[a-z0-9]+", text))
+    # ``[^\W_]`` keeps Unicode letters/numbers while excluding underscores.
+    # Restricting this to ASCII made every title such as CHINA-团圆 collapse to
+    # just "china", allowing a different Chinese-titled track to win.
+    return " ".join(re.findall(r"[^\W_]+", text, flags=re.UNICODE))
 
 
 def youtube_video_id(value: str) -> str:
@@ -186,7 +189,12 @@ def hydrate_selection_row(row: dict[str, str], max_results: int, min_score: floa
         return dict(row), "no_candidates"
     best = max(candidates, key=lambda item: hydration_score(row, item))
     score = 1.0 if direct_candidate else hydration_score(row, best)
-    if score < min_score:
+    wanted_title_words = set(normalized_words(row.get("title_raw")).split())
+    candidate_title_words = set(
+        normalized_words(best.get("title") or best.get("title_raw")).split()
+    )
+    title_tokens_match = not wanted_title_words or wanted_title_words <= candidate_title_words
+    if score < min_score or (not direct_candidate and not title_tokens_match):
         out = dict(row)
         candidate_id = str(best.get("id") or best.get("video_id") or "").strip()
         out.update({
@@ -238,7 +246,11 @@ def hydrate_selection_row(row: dict[str, str], max_results: int, min_score: floa
     return out, "resolved"
 
 
-def reusable_hydration(row: dict[str, Any] | None, override_video_id: str = "") -> bool:
+def reusable_hydration(
+    row: dict[str, Any] | None,
+    override_video_id: str = "",
+    expected_title: str = "",
+) -> bool:
     """Only successful hydration rows may be reused by --resume."""
     if not row:
         return False
@@ -249,6 +261,11 @@ def reusable_hydration(row: dict[str, Any] | None, override_video_id: str = "") 
     )
     if override_video_id and str(row.get("video_id") or "").strip() != override_video_id.strip():
         return False
+    if expected_title:
+        wanted = set(normalized_words(expected_title).split())
+        got = set(normalized_words(row.get("title_raw")).split())
+        if wanted and not wanted <= got:
+            return False
     return successful
 
 
@@ -436,7 +453,15 @@ def cmd_hydrate_selection(a: argparse.Namespace) -> None:
         override = overrides.get(row.get("record_key", ""))
         override_video_id = str((override or {}).get("video_id") or "").strip()
         cached = cached_by_key.get(row.get("record_key", ""))
-        if reusable_hydration(cached, override_video_id):
+        validate_cached_title = not override_video_id and not (
+            (row.get("video_id") or "").strip()
+            or (row.get("webpage_url") or "").strip()
+        )
+        if reusable_hydration(
+            cached,
+            override_video_id,
+            row.get("title_raw", "") if validate_cached_title else "",
+        ):
             hydrated = dict(cached)
             hydrated["hydrate_status"] = "resolved"
             return index, hydrated, "cached"

@@ -49,6 +49,26 @@ class MusiccrawlTests(unittest.TestCase):
         self.assertGreaterEqual(musiccrawl.hydration_score(seed, repost), 0.58)
         self.assertLess(musiccrawl.hydration_score(seed, wrong_artist), 0.58)
 
+    def test_unicode_title_tokens_distinguish_chinese_tracks(self) -> None:
+        self.assertEqual(musiccrawl.normalized_words("CHINA-团圆"), "china 团圆")
+        seed = {"title_raw": "CHINA-团圆", "channel_name": "YUAN / 徐梦圆"}
+        exact = {"title": "徐梦圆 YUAN - CHINA-团圆", "channel": "音乐人徐梦圆YUAN"}
+        wrong = {"title": "徐梦圆 - CHINA-新春", "channel": "音乐人徐梦圆YUAN"}
+        self.assertGreater(
+            musiccrawl.hydration_score(seed, exact),
+            musiccrawl.hydration_score(seed, wrong),
+        )
+
+    def test_resume_rejects_cached_title_with_missing_unicode_token(self) -> None:
+        cached = {
+            "video_id": "wrong",
+            "title_raw": "徐梦圆 - CHINA-新春",
+            "hydrated_at": "2026-07-17T00:00:00+00:00",
+            "hydrate_status": "resolved",
+        }
+        self.assertFalse(musiccrawl.reusable_hydration(cached, expected_title="CHINA-团圆"))
+        self.assertTrue(musiccrawl.reusable_hydration(cached, expected_title="CHINA-新春"))
+
     def test_export_all_ignores_liked_and_deduplicates_video_ids(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
