@@ -144,6 +144,11 @@ PROJECT_ROOT=$PWD ACESTEP_ROOT=/workspace/ACE-Step-1.5 \
   bash configs/train_2x4090.sh
 ```
 
+Downloader chỉ giữ VAE + text encoder dùng chung trên disk. XL-Base gần 20 GB
+được stage ở `/dev/shm/acestep-models` rồi symlink vào `checkpoints`, vì disk
+instance chỉ 32 GB. `/dev/shm` mất khi Stop/Restart nên phải chạy lại downloader
+trước preprocess/train nếu instance đã restart.
+
 Smoke test phải chứng minh cả hai GPU hoạt động, không OOM/NaN và có adapter
 checkpoint trước khi chạy 150 epoch.
 
