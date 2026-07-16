@@ -131,6 +131,7 @@ def hydrate_selection_row(row: dict[str, str], max_results: int, min_score: floa
     current_url = (row.get("webpage_url") or "").strip()
     current_id = (row.get("video_id") or "").strip()
     query = ""
+    direct_candidate = False
     if current_url or current_id:
         target = current_url or YOUTUBE_WATCH.format(current_id)
         candidates: list[dict[str, Any]] = []
@@ -142,7 +143,13 @@ def hydrate_selection_row(row: dict[str, str], max_results: int, min_score: floa
             info = ydl.extract_info(target, download=False)
         if info:
             candidates = [info]
+            direct_candidate = True
     else:
+        candidates = []
+
+    # A pinned/seed URL may have been deleted or made private. Fall back to a
+    # title + artist search instead of leaving that row permanently unresolved.
+    if not candidates:
         pieces = [row.get("channel_name", "").strip(), row.get("title_raw", "").strip(), "official audio"]
         query = " ".join(x for x in pieces if x)
         opts = {
@@ -160,7 +167,7 @@ def hydrate_selection_row(row: dict[str, str], max_results: int, min_score: floa
     if not candidates:
         return dict(row), "no_candidates"
     best = max(candidates, key=lambda item: hydration_score(row, item))
-    score = 1.0 if current_url or current_id else hydration_score(row, best)
+    score = 1.0 if direct_candidate else hydration_score(row, best)
     if score < min_score:
         out = dict(row)
         out.update({"hydrate_score": f"{score:.4f}", "hydrate_query": query, "hydrated_at": now_iso()})
@@ -173,7 +180,7 @@ def hydrate_selection_row(row: dict[str, str], max_results: int, min_score: floa
     # ytsearch with extract_flat is intentionally cheap, but its entries omit
     # fields such as duration, upload date, and stable channel IDs. Hydrate the
     # chosen candidate once more so the selection manifest has real metadata.
-    if not current_url and not current_id:
+    if not direct_candidate:
         full_opts = {
             "quiet": True,
             "skip_download": True,
@@ -361,15 +368,24 @@ def cmd_inventory(a:argparse.Namespace)->None:
 
 def cmd_hydrate_selection(a: argparse.Namespace) -> None:
     rows = read_csv(a.selection)
+    cached_by_key: dict[str, dict[str, str]] = {}
+    if a.resume and a.output.exists():
+        cached_by_key = {row.get("record_key", ""): row for row in read_csv(a.output)}
     output_rows: list[dict[str, Any]] = []
     unresolved: list[dict[str, Any]] = []
-    stats = {"resolved": 0, "no_candidates": 0, "low_score": 0, "candidate_missing_video_id": 0, "errors": 0}
+    stats = {"resolved": 0, "cached": 0, "no_candidates": 0, "low_score": 0, "candidate_missing_video_id": 0, "errors": 0}
     extra_fields = (
         "channel_id", "duration_seconds", "view_count", "upload_date",
         "availability", "live_status", "hydrate_score",
         "hydrate_query", "hydrated_at",
     )
     for index, row in enumerate(rows, 1):
+        cached = cached_by_key.get(row.get("record_key", ""))
+        if cached and cached.get("hydrated_at") and cached.get("video_id"):
+            output_rows.append(cached)
+            stats["cached"] += 1
+            print(f"[{index:03d}/{len(rows):03d}] {row.get('record_key')}: cached", flush=True)
+            continue
         try:
             hydrated, status = hydrate_selection_row(row, a.max_results, a.min_score)
         except Exception as exc:
@@ -708,7 +724,7 @@ def cmd_validate_selection(a: argparse.Namespace) -> None:
 def build_parser()->argparse.ArgumentParser:
     p=argparse.ArgumentParser(prog='musiccrawl'); sub=p.add_subparsers(dest='cmd',required=True)
     q=sub.add_parser('inventory'); q.add_argument('--sources',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--state',type=Path); q.add_argument('--min-duration',type=int,default=60); q.add_argument('--max-duration',type=int,default=600); q.set_defaults(fn=cmd_inventory)
-    q=sub.add_parser('hydrate-selection'); q.add_argument('--selection',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--unresolved',type=Path,required=True); q.add_argument('--max-results',type=int,default=5); q.add_argument('--min-score',type=float,default=0.58); q.add_argument('--checkpoint-every',type=int,default=10); q.add_argument('--sleep',type=float,default=0.25); q.set_defaults(fn=cmd_hydrate_selection)
+    q=sub.add_parser('hydrate-selection'); q.add_argument('--selection',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--unresolved',type=Path,required=True); q.add_argument('--max-results',type=int,default=5); q.add_argument('--min-score',type=float,default=0.58); q.add_argument('--checkpoint-every',type=int,default=10); q.add_argument('--sleep',type=float,default=0.25); q.add_argument('--resume',action='store_true'); q.set_defaults(fn=cmd_hydrate_selection)
     q=sub.add_parser('export-selection'); q.add_argument('--catalog',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--reset-ratings',action='store_true'); q.set_defaults(fn=cmd_export_selection)
     q=sub.add_parser('select'); q.add_argument('--selection',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--unresolved-output',type=Path); q.set_defaults(fn=cmd_select)
     q=sub.add_parser('export-all'); q.add_argument('--selection',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--unresolved',type=Path,required=True); q.set_defaults(fn=cmd_export_all)
