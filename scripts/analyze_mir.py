@@ -77,6 +77,12 @@ def analyze_one(task: tuple[Path, Path]) -> dict[str, Any]:
 
     path, output_dir = task
     try:
+        cached_path = output_dir / f"{path.stem}.json"
+        if cached_path.exists():
+            cached = json.loads(cached_path.read_text(encoding="utf-8"))
+            if cached.get("status") == "success" and float(cached.get("bpm") or 0) > 0:
+                cached["cache_status"] = "cached"
+                return cached
         y, sr = librosa.load(path, sr=22050, mono=True)
         duration = float(librosa.get_duration(y=y, sr=sr))
         hop_length = 512

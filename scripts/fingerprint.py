@@ -92,7 +92,7 @@ def main() -> int:
         "fpcalc_available": shutil.which("fpcalc") is not None,
         "automatic_file_deletion": False,
     }, indent=2))
-    return 0
+    return 1 if any(row.get("status") != "ok" for row in rows) else 0
 
 
 if __name__ == "__main__":

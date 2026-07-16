@@ -181,7 +181,7 @@ def main() -> int:
                 write_jsonl(args.manifest, sorted(rows, key=lambda item: item["video_id"]))
     rows.sort(key=lambda item: item["video_id"])
     write_jsonl(args.manifest, rows)
-    errors = sum(row["status"] == "error" for row in rows)
+    errors = sum(row["status"] not in {"success", "cached"} for row in rows)
     print(json.dumps({"requested": len(files), "completed_or_cached": len(files) - errors, "errors": errors, "model": args.model}, indent=2))
     return 1 if errors else 0
 

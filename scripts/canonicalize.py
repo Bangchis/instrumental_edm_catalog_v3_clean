@@ -24,6 +24,17 @@ def convert_one(task: tuple[Path, Path, float, float]) -> dict[str, Any]:
         "status": "pending",
     }
     try:
+        if destination.exists():
+            verified = ffprobe(destination)
+            streams = verified["audio_streams"]
+            if (
+                streams
+                and verified["duration_seconds"] >= min_duration
+                and all(str(stream.get("sample_rate")) == "48000" and int(stream.get("channels") or 0) == 2 for stream in streams)
+            ):
+                row["canonical_duration_seconds"] = verified["duration_seconds"]
+                row["status"] = "cached"
+                return row
         metadata = ffprobe(source)
         row.update(metadata)
         duration = metadata["duration_seconds"]
@@ -81,7 +92,7 @@ def main() -> int:
     write_jsonl(args.manifest, rows)
     summary = {
         "files_seen": len(files),
-        "success": sum(row["status"] == "success" for row in rows),
+        "success": sum(row["status"] in {"success", "cached"} for row in rows),
         "rejected": sum(str(row["status"]).startswith("rejected_") for row in rows),
         "errors": sum(row["status"] == "error" for row in rows),
     }

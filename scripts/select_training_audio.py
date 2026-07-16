@@ -71,7 +71,7 @@ def main() -> int:
         "original_or_vocal_chops": sum(row.get("used_separated_instrumental") is False for row in rows),
         "errors": sum(row["status"] == "error" for row in rows),
     }, indent=2))
-    return 0
+    return 1 if any(row["status"] == "error" for row in rows) else 0
 
 
 if __name__ == "__main__":
