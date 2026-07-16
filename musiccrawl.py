@@ -188,7 +188,16 @@ def hydrate_selection_row(row: dict[str, str], max_results: int, min_score: floa
     score = 1.0 if direct_candidate else hydration_score(row, best)
     if score < min_score:
         out = dict(row)
-        out.update({"hydrate_score": f"{score:.4f}", "hydrate_query": query, "hydrated_at": now_iso()})
+        candidate_id = str(best.get("id") or best.get("video_id") or "").strip()
+        out.update({
+            "hydrate_score": f"{score:.4f}",
+            "hydrate_query": query,
+            "hydrate_candidate_video_id": candidate_id,
+            "hydrate_candidate_title": best.get("title") or best.get("title_raw") or "",
+            "hydrate_candidate_channel": best.get("channel") or best.get("uploader") or "",
+            "hydrate_candidate_duration": best.get("duration") if best.get("duration") is not None else "",
+            "hydrated_at": now_iso(),
+        })
         return out, "low_score"
 
     video_id = str(best.get("id") or best.get("video_id") or "").strip()
@@ -409,7 +418,9 @@ def cmd_hydrate_selection(a: argparse.Namespace) -> None:
     extra_fields = (
         "channel_id", "duration_seconds", "view_count", "upload_date",
         "availability", "live_status", "hydrate_score",
-        "hydrate_query", "hydrated_at", "hydrate_status",
+        "hydrate_query", "hydrate_candidate_video_id", "hydrate_candidate_title",
+        "hydrate_candidate_channel", "hydrate_candidate_duration",
+        "hydrated_at", "hydrate_status",
     )
 
     def hydrate_task(index: int, row: dict[str, str]) -> tuple[int, dict[str, Any], str]:
@@ -462,13 +473,22 @@ def cmd_hydrate_selection(a: argparse.Namespace) -> None:
                 "channel_name": row.get("channel_name", ""),
                 "hydrate_query": hydrated.get("hydrate_query", ""),
                 "hydrate_score": hydrated.get("hydrate_score", ""),
+                "hydrate_candidate_video_id": hydrated.get("hydrate_candidate_video_id", ""),
+                "hydrate_candidate_title": hydrated.get("hydrate_candidate_title", ""),
+                "hydrate_candidate_channel": hydrated.get("hydrate_candidate_channel", ""),
+                "hydrate_candidate_duration": hydrated.get("hydrate_candidate_duration", ""),
                 "reason": status or "not_processed",
             })
     write_csv(a.output, final_rows, selection_fields(rows, extra_fields))
     write_csv(
         a.unresolved,
         unresolved,
-        ["record_key", "source_id", "source_rank", "title_raw", "channel_name", "hydrate_query", "hydrate_score", "reason"],
+        [
+            "record_key", "source_id", "source_rank", "title_raw", "channel_name",
+            "hydrate_query", "hydrate_score", "hydrate_candidate_video_id",
+            "hydrate_candidate_title", "hydrate_candidate_channel",
+            "hydrate_candidate_duration", "reason",
+        ],
     )
     payload = {
         "input_rows": len(rows),
