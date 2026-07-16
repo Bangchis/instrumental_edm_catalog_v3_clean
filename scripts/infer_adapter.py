@@ -27,7 +27,7 @@ def worker(args: argparse.Namespace) -> int:
         project_root=str(args.acestep_root),
         config_path="acestep-v15-xl-base",
         device="cuda",
-        use_flash_attention=False,
+        use_flash_attention=True,
         compile_model=False,
         offload_to_cpu=False,
         offload_dit_to_cpu=False,
