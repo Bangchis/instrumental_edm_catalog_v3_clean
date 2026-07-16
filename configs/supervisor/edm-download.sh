@@ -3,7 +3,7 @@ set -euo pipefail
 
 . /opt/nvm/nvm.sh
 source /workspace/ACE-Step-1.5/.venv/bin/activate
-export YOUTUBE_PROXY="${YOUTUBE_PROXY:-socks5h://127.0.0.1:1080}"
+export YOUTUBE_PROXY="${YOUTUBE_PROXY:-socks5h://127.0.0.1:1083}"
 
 cd /workspace/instrumental_edm_catalog_v3_clean
 python -u -m scripts.audit_hydration \

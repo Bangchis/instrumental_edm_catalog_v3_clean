@@ -5,6 +5,8 @@
 - The local Mac is only for code edits, tests that require no new dependency,
   git/GitHub operations, SSH routing, and transferring credentials explicitly
   authorized by the user.
+- `tools/local_socks5_proxy.py` is permitted only as localhost SSH egress
+  routing. It must never write or cache workload data on the Mac.
 - Run `apt`, `uv`, `pip`, `yt-dlp`, Demucs, Whisper, MIR, OpenRouter annotation,
   ACE-Step preprocessing/training/inference, and Hugging Face model downloads on
   the Vast server under `/workspace` or `/dev/shm` as documented in

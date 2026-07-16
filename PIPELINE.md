@@ -36,6 +36,13 @@ lên Mac. ACE-Step được khóa tại commit
 `6d467e4b5081ccb0abf1ec1bf4fdf9051a2d34b0`.
 
 Secret chỉ đặt trong `/workspace/.env` với quyền `600`, không đặt trong repo.
+Nếu YouTube chặn IP datacenter, `tools/local_socks5_proxy.py` chỉ làm egress
+localhost qua SSH static reverse forward; toàn bộ file tải xuống vẫn được ghi
+trên Vast.
+
+Instance hiện tại dùng static route `Vast 127.0.0.1:1083 → SSH → Mac
+127.0.0.1:19081`. SOCKS proxy dùng Python standard library và được macOS
+`launchctl` giữ sống; cả hai đầu chỉ bind localhost.
 
 ## 2. Hydrate và tải tất cả
 

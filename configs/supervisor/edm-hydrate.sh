@@ -3,7 +3,7 @@ set -euo pipefail
 
 . /opt/nvm/nvm.sh
 source /workspace/ACE-Step-1.5/.venv/bin/activate
-export ALL_PROXY="${YOUTUBE_PROXY:-socks5h://127.0.0.1:1081}"
+export ALL_PROXY="${YOUTUBE_PROXY:-socks5h://127.0.0.1:1083}"
 export HTTPS_PROXY="$ALL_PROXY"
 export HTTP_PROXY="$ALL_PROXY"
 
@@ -17,5 +17,5 @@ exec python -u musiccrawl.py hydrate-selection \
   --min-score 0.58 \
   --checkpoint-every 5 \
   --sleep 0.25 \
-  --workers 1 \
+  --workers 3 \
   --resume
