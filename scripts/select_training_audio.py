@@ -32,7 +32,18 @@ def main() -> int:
             continue
         lyric_row = lyrics.get(video_id, {})
         separated = separation.get(video_id, {})
-        use_separated = lyric_row.get("lyrics_detected") is True and separated.get("instrumental_path")
+        has_lyrics = lyric_row.get("lyrics_detected") is True
+        if has_lyrics and (
+            separated.get("instrumental_quality_ok") is not True
+            or not separated.get("instrumental_path")
+        ):
+            rows.append({
+                "video_id": video_id,
+                "status": "error",
+                "error": "intelligible lyrics detected but no validated instrumental stem",
+            })
+            continue
+        use_separated = has_lyrics
         source = Path(str(separated["instrumental_path"])) if use_separated else canonical
         if not source.exists():
             rows.append({"video_id": video_id, "status": "error", "error": f"missing source {source}"})

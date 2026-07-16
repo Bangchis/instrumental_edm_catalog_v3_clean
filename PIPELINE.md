@@ -71,13 +71,11 @@ python -m scripts.fingerprint \
   --unique-manifest data/manifests/unique_tracks.jsonl \
   --duplicates-manifest data/manifests/duplicates.jsonl
 
-python -m scripts.separate_vocals \
+python -m scripts.process_vocals \
   --input data/canonical --output data/separated \
-  --manifest data/manifests/separation.jsonl --devices 0,1
-
-python -m scripts.detect_lyrics \
   --separation-manifest data/manifests/separation.jsonl \
-  --output data/manifests/lyrics.jsonl --devices 0,1
+  --lyrics-manifest data/manifests/lyrics.jsonl \
+  --state-dir data/state/vocals --devices 0,1
 
 python -m scripts.select_training_audio \
   --canonical-dir data/canonical \
@@ -88,8 +86,10 @@ python -m scripts.select_training_audio \
   --manifest data/manifests/training_sources.jsonl
 ```
 
-Nếu Whisper phát hiện câu chữ rõ, pipeline dùng stem instrumental. Nếu không,
-pipeline giữ mix gốc để không xóa vocal chop dùng như nhạc cụ.
+Nếu Whisper phát hiện câu chữ rõ, pipeline chỉ giữ stem instrumental đã qua
+kiểm tra duration/loudness. Nếu không, pipeline giữ mix gốc để không xóa vocal
+chop dùng như nhạc cụ. Vocal stem luôn là file tạm; cách này tránh giữ 2 stem
+cho cả 240 bài trên ổ 32 GB.
 
 ## 4. MIR và OpenRouter annotation
 
