@@ -97,7 +97,7 @@ def main() -> int:
         "errors": sum(row["status"] == "error" for row in rows),
     }
     print(json.dumps(summary, indent=2))
-    return 1 if summary["errors"] else 0
+    return 1 if summary["errors"] or summary["rejected"] else 0
 
 
 if __name__ == "__main__":

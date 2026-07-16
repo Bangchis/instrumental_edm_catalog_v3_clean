@@ -12,6 +12,12 @@ import musiccrawl
 
 
 class MusiccrawlTests(unittest.TestCase):
+    def test_youtube_video_id_supports_pipeline_url_forms(self) -> None:
+        self.assertEqual(musiccrawl.youtube_video_id("https://www.youtube.com/watch?v=abc123&t=1"), "abc123")
+        self.assertEqual(musiccrawl.youtube_video_id("https://youtu.be/def456"), "def456")
+        self.assertEqual(musiccrawl.youtube_video_id("https://www.youtube.com/shorts/ghi789"), "ghi789")
+        self.assertEqual(musiccrawl.youtube_video_id("https://example.com/watch?v=nope"), "")
+
     def test_youtube_runtime_options_use_server_proxy_and_node(self) -> None:
         with mock.patch.dict(os.environ, {"YOUTUBE_PROXY": "socks5h://127.0.0.1:1080"}, clear=False):
             with mock.patch("musiccrawl.shutil.which", return_value="/opt/nvm/node"):
@@ -55,6 +61,50 @@ class MusiccrawlTests(unittest.TestCase):
                 "https://www.youtube.com/watch?v=def",
             ])
             self.assertEqual(len(musiccrawl.read_csv(unresolved)), 2)
+
+    def test_download_fails_when_a_resolved_video_is_missing(self) -> None:
+        class FakeYoutubeDL:
+            def __init__(self, _options) -> None:
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args) -> None:
+                pass
+
+            def download(self, _urls) -> None:
+                pass
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            selection = root / "selection.csv"
+            with selection.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(
+                    handle,
+                    fieldnames=["video_id", "webpage_url", "hydrate_status"],
+                )
+                writer.writeheader()
+                writer.writerow({
+                    "video_id": "abc",
+                    "webpage_url": "https://www.youtube.com/watch?v=abc",
+                    "hydrate_status": "resolved",
+                })
+            fake_module = mock.Mock()
+            fake_module.YoutubeDL = FakeYoutubeDL
+            args = argparse.Namespace(
+                urls=None,
+                selection=selection,
+                output=root / "raw",
+                archive=root / "state" / "archive.txt",
+                manifest=root / "downloads.jsonl",
+            )
+
+            with mock.patch("musiccrawl.require_yt_dlp", return_value=fake_module):
+                with self.assertRaises(SystemExit) as raised:
+                    musiccrawl.cmd_download(args)
+
+            self.assertEqual(raised.exception.code, 2)
 
 
 if __name__ == "__main__":

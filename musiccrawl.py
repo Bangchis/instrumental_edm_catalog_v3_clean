@@ -23,6 +23,7 @@ import unicodedata
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import parse_qs, urlparse
 
 YOUTUBE_WATCH = "https://www.youtube.com/watch?v={}"
 REQUIRED_CATALOG_FIELDS = (
@@ -97,6 +98,21 @@ def normalized_words(value: Any) -> str:
     text = unicodedata.normalize("NFKD", str(value or "")).casefold()
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
     return " ".join(re.findall(r"[a-z0-9]+", text))
+
+
+def youtube_video_id(value: str) -> str:
+    """Extract a YouTube ID from the URL forms produced by this pipeline."""
+    parsed = urlparse(value.strip())
+    host = parsed.netloc.casefold().split(":", 1)[0]
+    if host in {"youtu.be", "www.youtu.be"}:
+        return parsed.path.strip("/").split("/", 1)[0]
+    if host.endswith("youtube.com"):
+        if parsed.path == "/watch":
+            return (parse_qs(parsed.query).get("v") or [""])[0]
+        pieces = [piece for piece in parsed.path.split("/") if piece]
+        if len(pieces) >= 2 and pieces[0] in {"shorts", "embed", "live"}:
+            return pieces[1]
+    return ""
 
 
 def hydration_score(seed: dict[str, Any], candidate: dict[str, Any]) -> float:
@@ -569,8 +585,10 @@ def cmd_export_all(a: argparse.Namespace) -> None:
 
 def cmd_download(a:argparse.Namespace)->None:
     yt_dlp=require_yt_dlp()
+    requested_ids: set[str] = set()
     if a.urls:
         urls=[x.strip() for x in a.urls.read_text(encoding="utf-8").splitlines() if x.strip()]
+        requested_ids = {video_id for url in urls if (video_id := youtube_video_id(url))}
     elif a.selection:
         rows = read_csv(a.selection)
         urls = []
@@ -585,6 +603,8 @@ def cmd_download(a:argparse.Namespace)->None:
             if url and identity not in seen:
                 seen.add(identity)
                 urls.append(url)
+                if video_id:
+                    requested_ids.add(video_id)
     else:
         raise SystemExit("download requires --urls or --selection")
     opts={"format":"bestaudio/best","writeinfojson":True,"writedescription":True,"writethumbnail":True,
@@ -592,31 +612,50 @@ def cmd_download(a:argparse.Namespace)->None:
           "outtmpl":str(a.output/'%(id)s'/'audio.%(ext)s'),**youtube_runtime_options()}
     a.output.mkdir(parents=True,exist_ok=True); a.archive.parent.mkdir(parents=True,exist_ok=True)
     with yt_dlp.YoutubeDL(opts) as ydl: ydl.download(urls)
+    manifest: list[dict[str, Any]] = []
+    for info_path in sorted(a.output.glob("*/audio.info.json")):
+        try:
+            info = json.loads(info_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            manifest.append({"info_path": str(info_path), "download_status": "invalid_info_json", "error": repr(exc)})
+            continue
+        audio_files = sorted(
+            p for p in info_path.parent.glob("audio.*")
+            if p.name not in {"audio.info.json", "audio.description"}
+            and not p.name.endswith((".webp", ".jpg", ".png", ".part", ".ytdl"))
+        )
+        manifest.append({
+            "video_id": info.get("id"),
+            "title_raw": info.get("title"),
+            "channel_name": info.get("channel") or info.get("uploader"),
+            "webpage_url": info.get("webpage_url") or info.get("original_url"),
+            "duration_seconds": info.get("duration"),
+            "raw_audio_path": str(audio_files[0]) if audio_files else "",
+            "info_path": str(info_path),
+            "download_status": "success" if audio_files else "missing_audio",
+            "downloaded_at": now_iso(),
+        })
     if a.manifest:
-        manifest: list[dict[str, Any]] = []
-        for info_path in sorted(a.output.glob("*/audio.info.json")):
-            try:
-                info = json.loads(info_path.read_text(encoding="utf-8"))
-            except Exception as exc:
-                manifest.append({"info_path": str(info_path), "download_status": "invalid_info_json", "error": repr(exc)})
-                continue
-            audio_files = sorted(
-                p for p in info_path.parent.glob("audio.*")
-                if p.name not in {"audio.info.json", "audio.description"} and not p.name.endswith((".webp", ".jpg", ".png"))
-            )
-            manifest.append({
-                "video_id": info.get("id"),
-                "title_raw": info.get("title"),
-                "channel_name": info.get("channel") or info.get("uploader"),
-                "webpage_url": info.get("webpage_url") or info.get("original_url"),
-                "duration_seconds": info.get("duration"),
-                "raw_audio_path": str(audio_files[0]) if audio_files else "",
-                "info_path": str(info_path),
-                "download_status": "success" if audio_files else "missing_audio",
-                "downloaded_at": now_iso(),
-            })
         write_ndjson(a.manifest, manifest)
-        print(json.dumps({"requested_urls": len(urls), "manifest_rows": len(manifest), "manifest": str(a.manifest)}, indent=2))
+    successful_ids = {
+        str(row.get("video_id") or "")
+        for row in manifest
+        if row.get("download_status") == "success"
+    }
+    missing_ids = sorted(requested_ids - successful_ids)
+    invalid_rows = sum(row.get("download_status") != "success" for row in manifest)
+    summary = {
+        "requested_urls": len(urls),
+        "requested_video_ids": len(requested_ids),
+        "successful_video_ids": len(successful_ids & requested_ids),
+        "missing_video_ids": missing_ids,
+        "invalid_manifest_rows": invalid_rows,
+        "manifest_rows": len(manifest),
+        "manifest": str(a.manifest) if a.manifest else "",
+    }
+    print(json.dumps(summary, indent=2))
+    if missing_ids or invalid_rows:
+        raise SystemExit(2)
 
 
 def file_sha256(path: Path) -> str:
@@ -643,7 +682,7 @@ def chromaprint(path: Path) -> tuple[str, float | None]:
     if not fpcalc:
         return "", None
     proc = subprocess.run(
-        [fpcalc, "-json", str(path)], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        [fpcalc, "-json", "-length", "0", str(path)], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, check=True,
     )
     data = json.loads(proc.stdout)

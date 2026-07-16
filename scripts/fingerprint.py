@@ -83,6 +83,8 @@ def main() -> int:
     parser.add_argument("--unique-manifest", type=Path, required=True)
     parser.add_argument("--duplicates-manifest", type=Path, required=True)
     args = parser.parse_args()
+    if not shutil.which("fpcalc"):
+        raise SystemExit("fpcalc is required for full-track duplicate detection")
 
     rows: list[dict[str, Any]] = []
     for index, path in enumerate(find_audio_files(args.input), 1):
