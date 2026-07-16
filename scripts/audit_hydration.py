@@ -7,7 +7,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from musiccrawl import hydration_score, read_csv
+from musiccrawl import hydration_score, normalized_words, read_csv
 from music_pipeline.common import write_json
 
 
@@ -62,6 +62,12 @@ def audit_rows(
             "title": hydrated.get("title_raw"),
             "channel": hydrated.get("channel_name"),
         })
+        wanted_title_words = set(normalized_words(seed.get("title_raw")).split())
+        hydrated_title_words = set(normalized_words(hydrated.get("title_raw")).split())
+        title_token_coverage = (
+            len(wanted_title_words & hydrated_title_words) / len(wanted_title_words)
+            if wanted_title_words else 1.0
+        )
         source_had_direct_target = bool(
             (seed.get("video_id") or "").strip()
             or (seed.get("webpage_url") or "").strip()
@@ -69,6 +75,9 @@ def audit_rows(
         reviewed_override = record_key in override_keys
         if not source_had_direct_target and not reviewed_override and recomputed_score < min_score:
             row_errors.append(f"unreviewed weak metadata match: {recomputed_score:.4f}")
+        if not source_had_direct_target and not reviewed_override and title_token_coverage < 1.0:
+            missing_title_words = sorted(wanted_title_words - hydrated_title_words)
+            row_errors.append(f"unreviewed title token mismatch: missing {missing_title_words}")
 
         video_id = (hydrated.get("video_id") or "").strip()
         if video_id:
@@ -83,6 +92,7 @@ def audit_rows(
             "video_id": video_id,
             "duration_seconds": duration,
             "recomputed_score": round(recomputed_score, 4),
+            "title_token_coverage": round(title_token_coverage, 4),
             "source_had_direct_target": source_had_direct_target,
             "reviewed_override": reviewed_override,
             "errors": row_errors,

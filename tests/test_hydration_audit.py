@@ -43,6 +43,24 @@ class HydrationAuditTests(unittest.TestCase):
         self.assertTrue(any("hydrate_status=low_score" in error for error in report["errors"]))
         self.assertTrue(any("unreviewed weak metadata match" in error for error in report["errors"]))
 
+    def test_similar_but_different_china_variant_fails(self) -> None:
+        seed = [{
+            "record_key": "yuan:001", "title_raw": "China-C",
+            "channel_name": "YUAN", "video_id": "", "webpage_url": "",
+        }]
+        hydrated = [{
+            "record_key": "yuan:001", "title_raw": "徐梦圆 - China-P",
+            "channel_name": "YUAN", "video_id": "wrong",
+            "webpage_url": "https://www.youtube.com/watch?v=wrong",
+            "duration_seconds": "214", "hydrate_status": "resolved",
+            "live_status": "not_live",
+        }]
+
+        report = audit_rows(seed, hydrated, set(), expected_rows=1, min_score=0.58)
+
+        self.assertFalse(report["ok"])
+        self.assertTrue(any("missing ['c']" in error for error in report["errors"]))
+
 
 if __name__ == "__main__":
     unittest.main()
