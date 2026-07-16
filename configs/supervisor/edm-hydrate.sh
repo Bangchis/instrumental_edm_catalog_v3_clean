@@ -15,7 +15,7 @@ exec python -u musiccrawl.py hydrate-selection \
   --unresolved data/manifests/hydration_unresolved.csv \
   --max-results 10 \
   --min-score 0.58 \
-  --checkpoint-every 5 \
+  --checkpoint-every 1 \
   --sleep 0.25 \
   --workers 1 \
   --resume
