@@ -2,5 +2,6 @@
 set -euo pipefail
 
 source /workspace/ACE-Step-1.5/.venv/bin/activate
+export HF_HOME="${HF_HOME:-/workspace/.hf_home}"
 cd /workspace/instrumental_edm_catalog_v3_clean
 exec bash configs/download_acestep_models.sh

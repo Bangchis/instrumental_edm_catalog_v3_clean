@@ -175,6 +175,12 @@ python -m scripts.publish_adapter \
   --repo-id Bangchis/melodic-edm-core-ace-step-lora
 ```
 
+Trên instance hiện tại, toàn bộ các bước dài được quản lý bởi Supervisor:
+`edm-hydrate`, `edm-download`, `edm-prepare`, `edm-models`, `edm-preprocess`,
+`edm-train-smoke`, `edm-train-full`, `edm-infer` và `edm-publish`. Hai job cuối
+tự kiểm tra adapter/audio mẫu trước khi chạy; `edm-publish` tạo repo Hugging Face
+công khai vì không truyền cờ `--private`.
+
 Inference chạy hai process song song, mỗi GPU một candidate, cùng prompt và
 metadata nhưng khác seed. Publisher chỉ đưa adapter, config, code và audio sinh
 ra lên Hugging Face; không đưa audio nguồn, secret hoặc tensor cache.

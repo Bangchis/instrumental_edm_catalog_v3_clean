@@ -55,7 +55,16 @@ def main() -> int:
     missing = [name for name in required if not (args.adapter / name).is_file()]
     if missing:
         raise SystemExit(f"adapter is incomplete: {missing}")
+    if args.release_dir.is_symlink():
+        raise SystemExit(f"refusing symlink release directory: {args.release_dir}")
     args.release_dir.mkdir(parents=True, exist_ok=True)
+    allowed_top_level = {
+        "adapter_model.safetensors", "adapter_config.json", "infer_adapter.py",
+        "README.md", "training_config.json", "samples",
+    }
+    unexpected = [path.name for path in args.release_dir.iterdir() if path.name not in allowed_top_level]
+    if unexpected:
+        raise SystemExit(f"refusing to upload unexpected release files: {sorted(unexpected)}")
     for name in required:
         shutil.copy2(args.adapter / name, args.release_dir / name)
     shutil.copy2(args.inference_script, args.release_dir / "infer_adapter.py")
@@ -73,9 +82,13 @@ def main() -> int:
     })
     if args.samples_dir:
         samples_output = args.release_dir / "samples"
+        if samples_output.exists():
+            shutil.rmtree(samples_output)
         samples_output.mkdir(parents=True, exist_ok=True)
         for source in sorted(args.samples_dir.rglob("*.flac")):
-            shutil.copy2(source, samples_output / source.name)
+            destination = samples_output / source.relative_to(args.samples_dir)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
 
     api = HfApi()
     api.create_repo(args.repo_id, repo_type="model", private=args.private, exist_ok=True)

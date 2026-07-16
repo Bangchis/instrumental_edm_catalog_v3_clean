@@ -25,7 +25,13 @@ Playlist `PLdzH6pYmEFNNi6LB6EZF5Y07rXm3q7rjC` đã được cấu hình với `t
 
 ## Bắt đầu
 
+Với pipeline GPU hiện tại, chỉ chạy cài đặt và workload trên Vast server. Máy
+local chỉ dùng để sửa code, Git và SSH; không tải audio/model hoặc cài dependency
+runtime ở local.
+
 ```bash
+ssh vast-edm
+cd /workspace/instrumental_edm_catalog_v3_clean
 python -m pip install -e .
 
 musiccrawl validate \
