@@ -19,6 +19,8 @@ class MusiccrawlTests(unittest.TestCase):
         self.assertFalse(musiccrawl.reusable_hydration({**base, "hydrate_status": "low_score"}))
         self.assertFalse(musiccrawl.reusable_hydration({**base, "hydrate_status": "errors"}))
         self.assertFalse(musiccrawl.reusable_hydration({"video_id": "abc", "hydrate_status": "resolved"}))
+        self.assertTrue(musiccrawl.reusable_hydration({**base, "hydrate_status": "resolved"}, "abc"))
+        self.assertFalse(musiccrawl.reusable_hydration({**base, "hydrate_status": "resolved"}, "replacement"))
 
     def test_youtube_video_id_supports_pipeline_url_forms(self) -> None:
         self.assertEqual(musiccrawl.youtube_video_id("https://www.youtube.com/watch?v=abc123&t=1"), "abc123")

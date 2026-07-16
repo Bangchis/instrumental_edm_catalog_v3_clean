@@ -238,15 +238,18 @@ def hydrate_selection_row(row: dict[str, str], max_results: int, min_score: floa
     return out, "resolved"
 
 
-def reusable_hydration(row: dict[str, Any] | None) -> bool:
+def reusable_hydration(row: dict[str, Any] | None, override_video_id: str = "") -> bool:
     """Only successful hydration rows may be reused by --resume."""
     if not row:
         return False
-    return bool(
+    successful = bool(
         row.get("hydrated_at")
         and row.get("video_id")
         and row.get("hydrate_status") in {"resolved", "cached"}
     )
+    if override_video_id and str(row.get("video_id") or "").strip() != override_video_id.strip():
+        return False
+    return successful
 
 
 def popular_channel_url(url: str) -> str:
@@ -430,15 +433,16 @@ def cmd_hydrate_selection(a: argparse.Namespace) -> None:
     )
 
     def hydrate_task(index: int, row: dict[str, str]) -> tuple[int, dict[str, Any], str]:
+        override = overrides.get(row.get("record_key", ""))
+        override_video_id = str((override or {}).get("video_id") or "").strip()
         cached = cached_by_key.get(row.get("record_key", ""))
-        if reusable_hydration(cached):
+        if reusable_hydration(cached, override_video_id):
             hydrated = dict(cached)
             hydrated["hydrate_status"] = "resolved"
             return index, hydrated, "cached"
         row = dict(row)
-        override = overrides.get(row.get("record_key", ""))
-        if override and override.get("video_id"):
-            row["video_id"] = override["video_id"].strip()
+        if override_video_id:
+            row["video_id"] = override_video_id
             row["webpage_url"] = (override.get("webpage_url") or YOUTUBE_WATCH.format(row["video_id"])).strip()
             row["metadata_status"] = "manual video override; hydrate live metadata"
         try:
