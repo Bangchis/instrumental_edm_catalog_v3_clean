@@ -38,13 +38,14 @@ class MusiccrawlTests(unittest.TestCase):
             root = Path(temporary)
             selection = root / "selection.csv"
             with selection.open("w", encoding="utf-8", newline="") as handle:
-                writer = csv.DictWriter(handle, fieldnames=["record_key", "source_id", "source_rank", "video_id", "webpage_url", "title_raw", "channel_name", "liked"])
+                writer = csv.DictWriter(handle, fieldnames=["record_key", "source_id", "source_rank", "video_id", "webpage_url", "title_raw", "channel_name", "liked", "hydrate_status"])
                 writer.writeheader()
                 writer.writerows([
                     {"record_key": "a:1", "source_id": "a", "source_rank": "1", "video_id": "abc", "webpage_url": "", "title_raw": "One", "channel_name": "A", "liked": "0"},
                     {"record_key": "b:1", "source_id": "b", "source_rank": "1", "video_id": "abc", "webpage_url": "", "title_raw": "One", "channel_name": "A", "liked": "1"},
                     {"record_key": "a:2", "source_id": "a", "source_rank": "2", "video_id": "def", "webpage_url": "", "title_raw": "Two", "channel_name": "A", "liked": ""},
                     {"record_key": "a:3", "source_id": "a", "source_rank": "3", "video_id": "", "webpage_url": "", "title_raw": "Missing", "channel_name": "A", "liked": "1"},
+                    {"record_key": "a:4", "source_id": "a", "source_rank": "4", "video_id": "stale", "webpage_url": "", "title_raw": "Stale", "channel_name": "A", "liked": "", "hydrate_status": "no_candidates"},
                 ])
             output = root / "all.txt"
             unresolved = root / "unresolved.csv"
@@ -53,7 +54,7 @@ class MusiccrawlTests(unittest.TestCase):
                 "https://www.youtube.com/watch?v=abc",
                 "https://www.youtube.com/watch?v=def",
             ])
-            self.assertEqual(len(musiccrawl.read_csv(unresolved)), 1)
+            self.assertEqual(len(musiccrawl.read_csv(unresolved)), 2)
 
 
 if __name__ == "__main__":

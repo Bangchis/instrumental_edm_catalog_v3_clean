@@ -16,4 +16,5 @@ exec python -u musiccrawl.py hydrate-selection \
   --min-score 0.58 \
   --checkpoint-every 5 \
   --sleep 0.25 \
+  --workers 3 \
   --resume

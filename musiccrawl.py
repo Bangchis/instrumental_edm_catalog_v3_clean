@@ -8,6 +8,7 @@ audio duplicates are handled later using checksums/fingerprints.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import csv
 import difflib
 import hashlib
@@ -371,29 +372,51 @@ def cmd_hydrate_selection(a: argparse.Namespace) -> None:
     cached_by_key: dict[str, dict[str, str]] = {}
     if a.resume and a.output.exists():
         cached_by_key = {row.get("record_key", ""): row for row in read_csv(a.output)}
-    output_rows: list[dict[str, Any]] = []
-    unresolved: list[dict[str, Any]] = []
+    output_rows: list[dict[str, Any] | None] = [None] * len(rows)
+    statuses: list[str | None] = [None] * len(rows)
     stats = {"resolved": 0, "cached": 0, "no_candidates": 0, "low_score": 0, "candidate_missing_video_id": 0, "errors": 0}
     extra_fields = (
         "channel_id", "duration_seconds", "view_count", "upload_date",
         "availability", "live_status", "hydrate_score",
-        "hydrate_query", "hydrated_at",
+        "hydrate_query", "hydrated_at", "hydrate_status",
     )
-    for index, row in enumerate(rows, 1):
+
+    def hydrate_task(index: int, row: dict[str, str]) -> tuple[int, dict[str, Any], str]:
         cached = cached_by_key.get(row.get("record_key", ""))
         if cached and cached.get("hydrated_at") and cached.get("video_id"):
-            output_rows.append(cached)
-            stats["cached"] += 1
-            print(f"[{index:03d}/{len(rows):03d}] {row.get('record_key')}: cached", flush=True)
-            continue
+            hydrated = dict(cached)
+            hydrated["hydrate_status"] = "resolved"
+            return index, hydrated, "cached"
         try:
             hydrated, status = hydrate_selection_row(row, a.max_results, a.min_score)
         except Exception as exc:
             hydrated, status = dict(row), "errors"
             hydrated["metadata_status"] = f"hydrate_error: {type(exc).__name__}: {exc}"
-        stats[status] = stats.get(status, 0) + 1
-        output_rows.append(hydrated)
-        if status != "resolved":
+        hydrated["hydrate_status"] = status
+        hydrated.setdefault("hydrated_at", now_iso())
+        if a.sleep > 0:
+            time.sleep(a.sleep)
+        return index, hydrated, status
+
+    completed = 0
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, a.workers)) as pool:
+        futures = [pool.submit(hydrate_task, index, row) for index, row in enumerate(rows)]
+        for future in concurrent.futures.as_completed(futures):
+            index, hydrated, status = future.result()
+            output_rows[index] = hydrated
+            statuses[index] = status
+            completed += 1
+            row = rows[index]
+            stats[status] = stats.get(status, 0) + 1
+            print(f"[{completed:03d}/{len(rows):03d}] {row.get('record_key')}: {status}", flush=True)
+            if completed % a.checkpoint_every == 0:
+                checkpoint = [output_rows[i] or rows[i] for i in range(len(rows))]
+                write_csv(a.output, checkpoint, selection_fields(rows, extra_fields))
+
+    final_rows = [output_rows[i] or rows[i] for i in range(len(rows))]
+    unresolved: list[dict[str, Any]] = []
+    for row, hydrated, status in zip(rows, final_rows, statuses):
+        if status not in {"resolved", "cached"}:
             unresolved.append({
                 "record_key": row.get("record_key", ""),
                 "source_id": row.get("source_id", ""),
@@ -402,14 +425,9 @@ def cmd_hydrate_selection(a: argparse.Namespace) -> None:
                 "channel_name": row.get("channel_name", ""),
                 "hydrate_query": hydrated.get("hydrate_query", ""),
                 "hydrate_score": hydrated.get("hydrate_score", ""),
-                "reason": status,
+                "reason": status or "not_processed",
             })
-        print(f"[{index:03d}/{len(rows):03d}] {row.get('record_key')}: {status}", flush=True)
-        if index % a.checkpoint_every == 0:
-            write_csv(a.output, output_rows + rows[index:], selection_fields(rows, extra_fields))
-        if a.sleep > 0:
-            time.sleep(a.sleep)
-    write_csv(a.output, output_rows, selection_fields(rows, extra_fields))
+    write_csv(a.output, final_rows, selection_fields(rows, extra_fields))
     write_csv(
         a.unresolved,
         unresolved,
@@ -417,7 +435,7 @@ def cmd_hydrate_selection(a: argparse.Namespace) -> None:
     )
     payload = {
         "input_rows": len(rows),
-        "resolved_rows": sum(bool((r.get("video_id") or "").strip()) for r in output_rows),
+        "resolved_rows": sum(status in {"resolved", "cached"} for status in statuses),
         "unresolved_rows": len(unresolved),
         "run_stats": stats,
         "output": str(a.output),
@@ -493,6 +511,17 @@ def cmd_export_all(a: argparse.Namespace) -> None:
     unresolved: list[dict[str, str]] = []
     seen: set[str] = set()
     for row in rows:
+        hydrate_status = (row.get("hydrate_status") or "").strip()
+        if hydrate_status and hydrate_status not in {"resolved", "cached"}:
+            unresolved.append({
+                "record_key": row.get("record_key", ""),
+                "source_id": row.get("source_id", ""),
+                "source_rank": row.get("source_rank", ""),
+                "title_raw": row.get("title_raw", ""),
+                "channel_name": row.get("channel_name", ""),
+                "reason": f"hydrate_status={hydrate_status}",
+            })
+            continue
         video_id = (row.get("video_id") or "").strip()
         url = (row.get("webpage_url") or "").strip()
         if not url and video_id:
@@ -538,6 +567,9 @@ def cmd_download(a:argparse.Namespace)->None:
         urls = []
         seen: set[str] = set()
         for row in rows:
+            hydrate_status = (row.get("hydrate_status") or "").strip()
+            if hydrate_status and hydrate_status not in {"resolved", "cached"}:
+                continue
             video_id = (row.get("video_id") or "").strip()
             url = (row.get("webpage_url") or "").strip() or (YOUTUBE_WATCH.format(video_id) if video_id else "")
             identity = video_id or url
@@ -724,7 +756,7 @@ def cmd_validate_selection(a: argparse.Namespace) -> None:
 def build_parser()->argparse.ArgumentParser:
     p=argparse.ArgumentParser(prog='musiccrawl'); sub=p.add_subparsers(dest='cmd',required=True)
     q=sub.add_parser('inventory'); q.add_argument('--sources',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--state',type=Path); q.add_argument('--min-duration',type=int,default=60); q.add_argument('--max-duration',type=int,default=600); q.set_defaults(fn=cmd_inventory)
-    q=sub.add_parser('hydrate-selection'); q.add_argument('--selection',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--unresolved',type=Path,required=True); q.add_argument('--max-results',type=int,default=5); q.add_argument('--min-score',type=float,default=0.58); q.add_argument('--checkpoint-every',type=int,default=10); q.add_argument('--sleep',type=float,default=0.25); q.add_argument('--resume',action='store_true'); q.set_defaults(fn=cmd_hydrate_selection)
+    q=sub.add_parser('hydrate-selection'); q.add_argument('--selection',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--unresolved',type=Path,required=True); q.add_argument('--max-results',type=int,default=5); q.add_argument('--min-score',type=float,default=0.58); q.add_argument('--checkpoint-every',type=int,default=10); q.add_argument('--sleep',type=float,default=0.25); q.add_argument('--workers',type=int,default=1); q.add_argument('--resume',action='store_true'); q.set_defaults(fn=cmd_hydrate_selection)
     q=sub.add_parser('export-selection'); q.add_argument('--catalog',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--reset-ratings',action='store_true'); q.set_defaults(fn=cmd_export_selection)
     q=sub.add_parser('select'); q.add_argument('--selection',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--unresolved-output',type=Path); q.set_defaults(fn=cmd_select)
     q=sub.add_parser('export-all'); q.add_argument('--selection',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--unresolved',type=Path,required=True); q.set_defaults(fn=cmd_export_all)
