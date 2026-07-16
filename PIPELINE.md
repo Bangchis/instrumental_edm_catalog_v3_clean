@@ -71,6 +71,10 @@ python -m scripts.fingerprint \
   --unique-manifest data/manifests/unique_tracks.jsonl \
   --duplicates-manifest data/manifests/duplicates.jsonl
 
+# fpcalc chạy toàn bộ bài (-length 0), không chỉ 120 giây mặc định.
+# SHA-256 hoặc full-track Chromaprint giống hệt sẽ bị loại khỏi manifest train;
+# audio nguồn không bị xóa và remix có fingerprint khác vẫn được giữ riêng.
+
 python -m scripts.process_vocals \
   --input data/canonical --output data/separated \
   --separation-manifest data/manifests/separation.jsonl \
