@@ -13,7 +13,7 @@ exec python -u musiccrawl.py hydrate-selection \
   --overrides catalog/hydration_overrides.csv \
   --output data/manifests/selection_hydrated.csv \
   --unresolved data/manifests/hydration_unresolved.csv \
-  --max-results 5 \
+  --max-results 10 \
   --min-score 0.58 \
   --checkpoint-every 5 \
   --sleep 0.25 \
