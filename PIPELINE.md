@@ -58,6 +58,9 @@ python musiccrawl.py download \
 ```
 
 `export-all` và `download --selection` bỏ qua hoàn toàn `liked`.
+Trước khi tải, `scripts.audit_hydration` bắt buộc đủ 240 record, metadata và
+duration hợp lệ, không phải livestream, và mọi match yếu đều phải có override
+đã review trong `catalog/hydration_overrides.csv`.
 
 ## 3. Chuẩn hóa, fingerprint và xử lý vocal
 

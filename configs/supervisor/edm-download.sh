@@ -6,6 +6,14 @@ source /workspace/ACE-Step-1.5/.venv/bin/activate
 export YOUTUBE_PROXY="${YOUTUBE_PROXY:-socks5h://127.0.0.1:1080}"
 
 cd /workspace/instrumental_edm_catalog_v3_clean
+python -u -m scripts.audit_hydration \
+  --seed catalog/selection.csv \
+  --hydrated data/manifests/selection_hydrated.csv \
+  --overrides catalog/hydration_overrides.csv \
+  --report data/manifests/hydration_audit.json \
+  --expected-rows 240 \
+  --min-score 0.58
+
 python -u musiccrawl.py export-all \
   --selection data/manifests/selection_hydrated.csv \
   --output data/manifests/all_resolved_urls.txt \
