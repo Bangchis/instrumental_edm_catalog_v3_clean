@@ -1,0 +1,62 @@
+{
+  "primary_genres": [
+    "progressive house",
+    "electro house",
+    "melodic house",
+    "future bass",
+    "drum and bass",
+    "dubstep",
+    "complextro",
+    "trance",
+    "hardcore",
+    "chiptune",
+    "orchestral electronic",
+    "other electronic"
+  ],
+  "style_families": [
+    "east_asian_melodic",
+    "china_melodic",
+    "gaming_melodic",
+    "fantasy_edm",
+    "cinematic_edm",
+    "festival_edm",
+    "chiptune_gaming",
+    "orchestral_gaming"
+  ],
+  "instrument_names": [
+    "synth lead",
+    "synth pluck",
+    "supersaw",
+    "piano",
+    "strings",
+    "brass",
+    "choir",
+    "guitar",
+    "pipa",
+    "guzheng",
+    "dizi",
+    "erhu",
+    "taiko",
+    "kick",
+    "snare",
+    "hi-hat",
+    "sub bass",
+    "reese bass",
+    "vocal chop"
+  ],
+  "moods": [
+    "uplifting",
+    "heroic",
+    "adventurous",
+    "emotional",
+    "nostalgic",
+    "dreamy",
+    "mysterious",
+    "dark",
+    "playful",
+    "energetic",
+    "cinematic",
+    "peaceful"
+  ],
+  "policy": "Use a listed label when it fits. Use a short precise label outside the list only when none fits. Keep vocal chops used as instruments; flag intelligible lyrics."
+}

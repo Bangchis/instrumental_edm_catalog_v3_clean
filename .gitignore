@@ -16,3 +16,15 @@ __pycache__/
 # Generated/downloaded working data
 raw/
 state/
+data/
+checkpoints/
+models/
+outputs/
+release/
+ACE-Step-1.5/
+*.key
+*.pem
+
+# Runtime secrets and caches
+.cache/
+openrouter*.json

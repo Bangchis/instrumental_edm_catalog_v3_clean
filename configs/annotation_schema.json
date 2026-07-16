@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "primary_genre",
+    "secondary_genres",
+    "style_families",
+    "instruments",
+    "moods",
+    "melody_character",
+    "arrangement",
+    "production",
+    "vocal_content",
+    "caption",
+    "confidence"
+  ],
+  "properties": {
+    "primary_genre": {"type": "string"},
+    "secondary_genres": {"type": "array", "items": {"type": "string"}, "maxItems": 4},
+    "style_families": {"type": "array", "items": {"type": "string"}, "maxItems": 4},
+    "instruments": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "role"],
+        "properties": {
+          "name": {"type": "string"},
+          "role": {"type": "string"}
+        }
+      }
+    },
+    "moods": {"type": "array", "items": {"type": "string"}, "maxItems": 6},
+    "melody_character": {"type": "string"},
+    "arrangement": {"type": "string"},
+    "production": {"type": "string"},
+    "vocal_content": {
+      "type": "string",
+      "enum": ["instrumental", "vocal_chops_only", "intelligible_lyrics", "uncertain"]
+    },
+    "caption": {"type": "string", "minLength": 40, "maxLength": 900},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+  }
+}

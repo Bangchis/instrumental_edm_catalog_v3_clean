@@ -52,3 +52,9 @@ musiccrawl select \
 Bài `liked=1` nhưng chưa có URL sẽ được ghi vào `catalog/unresolved_liked.csv`, không tạo URL YouTube rỗng.
 
 Đọc `RUNBOOK.md` để chạy pipeline và `docs/FILE_GUIDE.md` hoặc `docs/FILE_GUIDE.docx` để hiểu từng file.
+
+## Pipeline training mới
+
+Pipeline full-dataset bỏ qua hoàn toàn `liked`, cố hydrate/tải cả 240 dòng, xử lý
+vocal, MIR, annotation audio bằng `google/gemini-3.1-flash-lite`, build dataset
+ACE-Step và train XL-Base LoRA bằng 2×4090. Xem [`PIPELINE.md`](PIPELINE.md).

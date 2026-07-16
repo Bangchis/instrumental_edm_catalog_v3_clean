@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import argparse
 import csv
+import difflib
 import hashlib
 import json
 import re
 import shutil
 import subprocess
 import sys
+import time
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
@@ -42,6 +45,14 @@ def write_csv(path: Path, rows: list[dict[str, Any]], fields: list[str]) -> None
         w.writeheader(); w.writerows(rows)
 
 
+def selection_fields(rows: list[dict[str, Any]], extra: Iterable[str] = ()) -> list[str]:
+    fields = list(rows[0].keys()) if rows else []
+    for field in extra:
+        if field not in fields:
+            fields.append(field)
+    return fields
+
+
 def read_ndjson(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
@@ -67,6 +78,96 @@ def require_yt_dlp():
         return yt_dlp
     except ImportError as e:
         raise SystemExit("Install yt-dlp first: python -m pip install -U yt-dlp") from e
+
+
+def normalized_words(value: Any) -> str:
+    text = unicodedata.normalize("NFKD", str(value or "")).casefold()
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    return " ".join(re.findall(r"[a-z0-9]+", text))
+
+
+def hydration_score(seed: dict[str, Any], candidate: dict[str, Any]) -> float:
+    wanted_title = normalized_words(seed.get("title_raw"))
+    got_title = normalized_words(candidate.get("title") or candidate.get("title_raw"))
+    title_score = difflib.SequenceMatcher(None, wanted_title, got_title).ratio()
+    wanted_channel = normalized_words(seed.get("channel_name") or seed.get("source_id"))
+    got_channel = normalized_words(candidate.get("channel") or candidate.get("uploader") or candidate.get("channel_name"))
+    channel_score = difflib.SequenceMatcher(None, wanted_channel, got_channel).ratio() if wanted_channel else 0.5
+    exact_bonus = 0.12 if wanted_title and wanted_title == got_title else 0.0
+    return min(1.0, 0.82 * title_score + 0.18 * channel_score + exact_bonus)
+
+
+def hydrate_selection_row(row: dict[str, str], max_results: int, min_score: float) -> tuple[dict[str, Any], str]:
+    yt_dlp = require_yt_dlp()
+    current_url = (row.get("webpage_url") or "").strip()
+    current_id = (row.get("video_id") or "").strip()
+    query = ""
+    if current_url or current_id:
+        target = current_url or YOUTUBE_WATCH.format(current_id)
+        candidates: list[dict[str, Any]] = []
+        opts = {"quiet": True, "skip_download": True, "ignoreerrors": True, "noplaylist": True}
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(target, download=False)
+        if info:
+            candidates = [info]
+    else:
+        pieces = [row.get("channel_name", "").strip(), row.get("title_raw", "").strip(), "official audio"]
+        query = " ".join(x for x in pieces if x)
+        opts = {
+            "quiet": True,
+            "skip_download": True,
+            "ignoreerrors": True,
+            "extract_flat": "discard_in_playlist",
+            "playlistend": max_results,
+        }
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            result = ydl.extract_info(f"ytsearch{max_results}:{query}", download=False) or {}
+        candidates = [x for x in (result.get("entries") or []) if isinstance(x, dict)]
+
+    if not candidates:
+        return dict(row), "no_candidates"
+    best = max(candidates, key=lambda item: hydration_score(row, item))
+    score = 1.0 if current_url or current_id else hydration_score(row, best)
+    if score < min_score:
+        out = dict(row)
+        out.update({"hydrate_score": f"{score:.4f}", "hydrate_query": query, "hydrated_at": now_iso()})
+        return out, "low_score"
+
+    video_id = str(best.get("id") or best.get("video_id") or "").strip()
+    if not video_id:
+        return dict(row), "candidate_missing_video_id"
+
+    # ytsearch with extract_flat is intentionally cheap, but its entries omit
+    # fields such as duration, upload date, and stable channel IDs. Hydrate the
+    # chosen candidate once more so the selection manifest has real metadata.
+    if not current_url and not current_id:
+        full_opts = {
+            "quiet": True,
+            "skip_download": True,
+            "ignoreerrors": False,
+            "noplaylist": True,
+        }
+        with yt_dlp.YoutubeDL(full_opts) as ydl:
+            best = ydl.extract_info(YOUTUBE_WATCH.format(video_id), download=False) or best
+
+    out: dict[str, Any] = dict(row)
+    out.update({
+        "video_id": video_id,
+        "webpage_url": best.get("webpage_url") or best.get("original_url") or YOUTUBE_WATCH.format(video_id),
+        "title_raw": best.get("title") or row.get("title_raw", ""),
+        "channel_id": best.get("channel_id") or best.get("uploader_id") or row.get("channel_id", ""),
+        "channel_name": best.get("channel") or best.get("uploader") or row.get("channel_name", ""),
+        "duration_seconds": best.get("duration") if best.get("duration") is not None else "",
+        "view_count": best.get("view_count") if best.get("view_count") is not None else "",
+        "upload_date": best.get("upload_date") or "",
+        "availability": best.get("availability") or "unknown",
+        "live_status": best.get("live_status") or ("is_live" if best.get("is_live") else "not_live"),
+        "metadata_status": "hydrated",
+        "hydrate_score": f"{score:.4f}",
+        "hydrate_query": query,
+        "hydrated_at": now_iso(),
+    })
+    return out, "resolved"
 
 
 def popular_channel_url(url: str) -> str:
@@ -224,6 +325,57 @@ def cmd_inventory(a:argparse.Namespace)->None:
     print(f"catalog: {len(merged)} unique video IDs")
 
 
+def cmd_hydrate_selection(a: argparse.Namespace) -> None:
+    rows = read_csv(a.selection)
+    output_rows: list[dict[str, Any]] = []
+    unresolved: list[dict[str, Any]] = []
+    stats = {"resolved": 0, "no_candidates": 0, "low_score": 0, "candidate_missing_video_id": 0, "errors": 0}
+    extra_fields = (
+        "channel_id", "duration_seconds", "view_count", "upload_date",
+        "availability", "live_status", "hydrate_score",
+        "hydrate_query", "hydrated_at",
+    )
+    for index, row in enumerate(rows, 1):
+        try:
+            hydrated, status = hydrate_selection_row(row, a.max_results, a.min_score)
+        except Exception as exc:
+            hydrated, status = dict(row), "errors"
+            hydrated["metadata_status"] = f"hydrate_error: {type(exc).__name__}: {exc}"
+        stats[status] = stats.get(status, 0) + 1
+        output_rows.append(hydrated)
+        if status != "resolved":
+            unresolved.append({
+                "record_key": row.get("record_key", ""),
+                "source_id": row.get("source_id", ""),
+                "source_rank": row.get("source_rank", ""),
+                "title_raw": row.get("title_raw", ""),
+                "channel_name": row.get("channel_name", ""),
+                "hydrate_query": hydrated.get("hydrate_query", ""),
+                "hydrate_score": hydrated.get("hydrate_score", ""),
+                "reason": status,
+            })
+        print(f"[{index:03d}/{len(rows):03d}] {row.get('record_key')}: {status}", flush=True)
+        if index % a.checkpoint_every == 0:
+            write_csv(a.output, output_rows + rows[index:], selection_fields(rows, extra_fields))
+        if a.sleep > 0:
+            time.sleep(a.sleep)
+    write_csv(a.output, output_rows, selection_fields(rows, extra_fields))
+    write_csv(
+        a.unresolved,
+        unresolved,
+        ["record_key", "source_id", "source_rank", "title_raw", "channel_name", "hydrate_query", "hydrate_score", "reason"],
+    )
+    payload = {
+        "input_rows": len(rows),
+        "resolved_rows": sum(bool((r.get("video_id") or "").strip()) for r in output_rows),
+        "unresolved_rows": len(unresolved),
+        "run_stats": stats,
+        "output": str(a.output),
+        "unresolved_output": str(a.unresolved),
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
 def primary_style(row:dict[str,Any])->str:
     hints=[x for x in row.get("style_hints",[]) if x]
     return "|".join(sorted(set(hints)))
@@ -285,14 +437,95 @@ def cmd_select(a:argparse.Namespace)->None:
     }, ensure_ascii=False, indent=2))
 
 
+def cmd_export_all(a: argparse.Namespace) -> None:
+    rows = read_csv(a.selection)
+    urls: list[str] = []
+    unresolved: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for row in rows:
+        video_id = (row.get("video_id") or "").strip()
+        url = (row.get("webpage_url") or "").strip()
+        if not url and video_id:
+            url = YOUTUBE_WATCH.format(video_id)
+        identity = video_id or url
+        if not url:
+            unresolved.append({
+                "record_key": row.get("record_key", ""),
+                "source_id": row.get("source_id", ""),
+                "source_rank": row.get("source_rank", ""),
+                "title_raw": row.get("title_raw", ""),
+                "channel_name": row.get("channel_name", ""),
+                "reason": "missing video_id and webpage_url",
+            })
+            continue
+        if identity in seen:
+            continue
+        seen.add(identity)
+        urls.append(url)
+    a.output.parent.mkdir(parents=True, exist_ok=True)
+    a.output.write_text("\n".join(urls) + ("\n" if urls else ""), encoding="utf-8")
+    write_csv(
+        a.unresolved,
+        unresolved,
+        ["record_key", "source_id", "source_rank", "title_raw", "channel_name", "reason"],
+    )
+    print(json.dumps({
+        "selection_rows": len(rows),
+        "resolved_unique_urls": len(urls),
+        "unresolved_rows": len(unresolved),
+        "liked_column_used": False,
+        "urls_output": str(a.output),
+        "unresolved_output": str(a.unresolved),
+    }, ensure_ascii=False, indent=2))
+
+
 def cmd_download(a:argparse.Namespace)->None:
     yt_dlp=require_yt_dlp()
-    urls=[x.strip() for x in a.urls.read_text(encoding="utf-8").splitlines() if x.strip()]
+    if a.urls:
+        urls=[x.strip() for x in a.urls.read_text(encoding="utf-8").splitlines() if x.strip()]
+    elif a.selection:
+        rows = read_csv(a.selection)
+        urls = []
+        seen: set[str] = set()
+        for row in rows:
+            video_id = (row.get("video_id") or "").strip()
+            url = (row.get("webpage_url") or "").strip() or (YOUTUBE_WATCH.format(video_id) if video_id else "")
+            identity = video_id or url
+            if url and identity not in seen:
+                seen.add(identity)
+                urls.append(url)
+    else:
+        raise SystemExit("download requires --urls or --selection")
     opts={"format":"bestaudio/best","writeinfojson":True,"writedescription":True,"writethumbnail":True,
           "download_archive":str(a.archive),"ignoreerrors":True,"nooverwrites":True,
           "outtmpl":str(a.output/'%(id)s'/'audio.%(ext)s')}
     a.output.mkdir(parents=True,exist_ok=True); a.archive.parent.mkdir(parents=True,exist_ok=True)
     with yt_dlp.YoutubeDL(opts) as ydl: ydl.download(urls)
+    if a.manifest:
+        manifest: list[dict[str, Any]] = []
+        for info_path in sorted(a.output.glob("*/audio.info.json")):
+            try:
+                info = json.loads(info_path.read_text(encoding="utf-8"))
+            except Exception as exc:
+                manifest.append({"info_path": str(info_path), "download_status": "invalid_info_json", "error": repr(exc)})
+                continue
+            audio_files = sorted(
+                p for p in info_path.parent.glob("audio.*")
+                if p.name not in {"audio.info.json", "audio.description"} and not p.name.endswith((".webp", ".jpg", ".png"))
+            )
+            manifest.append({
+                "video_id": info.get("id"),
+                "title_raw": info.get("title"),
+                "channel_name": info.get("channel") or info.get("uploader"),
+                "webpage_url": info.get("webpage_url") or info.get("original_url"),
+                "duration_seconds": info.get("duration"),
+                "raw_audio_path": str(audio_files[0]) if audio_files else "",
+                "info_path": str(info_path),
+                "download_status": "success" if audio_files else "missing_audio",
+                "downloaded_at": now_iso(),
+            })
+        write_ndjson(a.manifest, manifest)
+        print(json.dumps({"requested_urls": len(urls), "manifest_rows": len(manifest), "manifest": str(a.manifest)}, indent=2))
 
 
 def file_sha256(path: Path) -> str:
@@ -441,9 +674,11 @@ def cmd_validate_selection(a: argparse.Namespace) -> None:
 def build_parser()->argparse.ArgumentParser:
     p=argparse.ArgumentParser(prog='musiccrawl'); sub=p.add_subparsers(dest='cmd',required=True)
     q=sub.add_parser('inventory'); q.add_argument('--sources',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--state',type=Path); q.add_argument('--min-duration',type=int,default=60); q.add_argument('--max-duration',type=int,default=600); q.set_defaults(fn=cmd_inventory)
+    q=sub.add_parser('hydrate-selection'); q.add_argument('--selection',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--unresolved',type=Path,required=True); q.add_argument('--max-results',type=int,default=5); q.add_argument('--min-score',type=float,default=0.58); q.add_argument('--checkpoint-every',type=int,default=10); q.add_argument('--sleep',type=float,default=0.25); q.set_defaults(fn=cmd_hydrate_selection)
     q=sub.add_parser('export-selection'); q.add_argument('--catalog',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--reset-ratings',action='store_true'); q.set_defaults(fn=cmd_export_selection)
     q=sub.add_parser('select'); q.add_argument('--selection',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--unresolved-output',type=Path); q.set_defaults(fn=cmd_select)
-    q=sub.add_parser('download'); q.add_argument('--urls',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--archive',type=Path,required=True); q.set_defaults(fn=cmd_download)
+    q=sub.add_parser('export-all'); q.add_argument('--selection',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.add_argument('--unresolved',type=Path,required=True); q.set_defaults(fn=cmd_export_all)
+    q=sub.add_parser('download'); source=q.add_mutually_exclusive_group(required=True); source.add_argument('--urls',type=Path); source.add_argument('--selection',type=Path); q.add_argument('--output',type=Path,required=True); q.add_argument('--archive',type=Path,required=True); q.add_argument('--manifest',type=Path); q.set_defaults(fn=cmd_download)
     q=sub.add_parser('audit-duplicates'); q.add_argument('--input',type=Path,required=True); q.add_argument('--output',type=Path,required=True); q.set_defaults(fn=cmd_audit_duplicates)
     q=sub.add_parser('validate'); q.add_argument('--selection',type=Path,required=True); q.add_argument('--target-count',type=int,default=40); q.add_argument('--core-sources',default='xomu,thefatrat,diversity,starling_edm,xu_mengyuan,myomouse'); q.set_defaults(fn=cmd_validate_selection)
     return p
