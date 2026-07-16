@@ -2,14 +2,23 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import musiccrawl
 
 
 class MusiccrawlTests(unittest.TestCase):
+    def test_youtube_runtime_options_use_server_proxy_and_node(self) -> None:
+        with mock.patch.dict(os.environ, {"YOUTUBE_PROXY": "socks5h://127.0.0.1:1080"}, clear=False):
+            with mock.patch("musiccrawl.shutil.which", return_value="/opt/nvm/node"):
+                options = musiccrawl.youtube_runtime_options()
+        self.assertEqual(options["proxy"], "socks5h://127.0.0.1:1080")
+        self.assertEqual(options["js_runtimes"], {"node": {}})
+
     def test_hydration_score_prefers_matching_title_and_channel(self) -> None:
         seed = {"title_raw": "Last Dance", "channel_name": "Xomu"}
         exact = {"title": "Last Dance", "channel": "Xomu"}

@@ -12,6 +12,7 @@ import csv
 import difflib
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -80,6 +81,17 @@ def require_yt_dlp():
         raise SystemExit("Install yt-dlp first: python -m pip install -U yt-dlp") from e
 
 
+def youtube_runtime_options() -> dict[str, Any]:
+    """Return server runtime options without hard-coding a proxy in the repo."""
+    options: dict[str, Any] = {}
+    proxy = os.environ.get("YOUTUBE_PROXY") or os.environ.get("ALL_PROXY")
+    if proxy:
+        options["proxy"] = proxy
+    if shutil.which("node"):
+        options["js_runtimes"] = {"node": {}}
+    return options
+
+
 def normalized_words(value: Any) -> str:
     text = unicodedata.normalize("NFKD", str(value or "")).casefold()
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
@@ -122,7 +134,10 @@ def hydrate_selection_row(row: dict[str, str], max_results: int, min_score: floa
     if current_url or current_id:
         target = current_url or YOUTUBE_WATCH.format(current_id)
         candidates: list[dict[str, Any]] = []
-        opts = {"quiet": True, "skip_download": True, "ignoreerrors": True, "noplaylist": True}
+        opts = {
+            "quiet": True, "skip_download": True, "ignoreerrors": True, "noplaylist": True,
+            **youtube_runtime_options(),
+        }
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(target, download=False)
         if info:
@@ -136,6 +151,7 @@ def hydrate_selection_row(row: dict[str, str], max_results: int, min_score: floa
             "ignoreerrors": True,
             "extract_flat": "discard_in_playlist",
             "playlistend": max_results,
+            **youtube_runtime_options(),
         }
         with yt_dlp.YoutubeDL(opts) as ydl:
             result = ydl.extract_info(f"ytsearch{max_results}:{query}", download=False) or {}
@@ -163,6 +179,7 @@ def hydrate_selection_row(row: dict[str, str], max_results: int, min_score: floa
             "skip_download": True,
             "ignoreerrors": False,
             "noplaylist": True,
+            **youtube_runtime_options(),
         }
         with yt_dlp.YoutubeDL(full_opts) as ydl:
             best = ydl.extract_info(YOUTUBE_WATCH.format(video_id), download=False) or best
@@ -260,7 +277,7 @@ def extract_source(src: dict[str,str], min_duration:int, max_duration:int) -> li
     url=src["url"]
     if source_type == "channel" and ranking == "popular":
         url=popular_channel_url(url)
-    flat_opts={"quiet":True,"skip_download":True,"extract_flat":"in_playlist","playlistend":pool,"ignoreerrors":True}
+    flat_opts={"quiet":True,"skip_download":True,"extract_flat":"in_playlist","playlistend":pool,"ignoreerrors":True,**youtube_runtime_options()}
     with yt_dlp.YoutubeDL(flat_opts) as ydl:
         info=ydl.extract_info(url,download=False)
     entries=(info or {}).get("entries") if isinstance(info,dict) else None
@@ -274,7 +291,7 @@ def extract_source(src: dict[str,str], min_duration:int, max_duration:int) -> li
 
     # Hydrate candidates so popularity really uses current view_count and full metadata.
     hydrated=[]
-    full_opts={"quiet":True,"skip_download":True,"ignoreerrors":True,"noplaylist":True}
+    full_opts={"quiet":True,"skip_download":True,"ignoreerrors":True,"noplaylist":True,**youtube_runtime_options()}
     with yt_dlp.YoutubeDL(full_opts) as ydl:
         for source_index,row in flat:
             try:
@@ -515,7 +532,7 @@ def cmd_download(a:argparse.Namespace)->None:
         raise SystemExit("download requires --urls or --selection")
     opts={"format":"bestaudio/best","writeinfojson":True,"writedescription":True,"writethumbnail":True,
           "download_archive":str(a.archive),"ignoreerrors":True,"nooverwrites":True,
-          "outtmpl":str(a.output/'%(id)s'/'audio.%(ext)s')}
+          "outtmpl":str(a.output/'%(id)s'/'audio.%(ext)s'),**youtube_runtime_options()}
     a.output.mkdir(parents=True,exist_ok=True); a.archive.parent.mkdir(parents=True,exist_ok=True)
     with yt_dlp.YoutubeDL(opts) as ydl: ydl.download(urls)
     if a.manifest:
