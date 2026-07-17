@@ -1,5 +1,9 @@
 # Instrumental EDM Catalog v3 — bản làm lại sạch
 
+> **Checkpoint khi dừng Vast (2026-07-17):** xem
+> [`docs/SERVER_HANDOFF_2026-07-17.md`](docs/SERVER_HANDOFF_2026-07-17.md) để biết
+> chính xác đã làm gì, còn thiếu gì và cách resume trên server mới.
+
 Đây là bản thay thế hoàn toàn cho các bundle cũ bị lẫn giữa seed Top 30 và mục tiêu Top 40. Bản v3 không chứa file legacy hay migration seed.
 
 ## Trạng thái thực tế
